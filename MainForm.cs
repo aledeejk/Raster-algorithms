@@ -17,13 +17,13 @@ namespace RasterAlgorithms
         private Point lassoStartPoint;
         private bool isDrawing;
         private bool mouseMoved;
-        private int mode;                          // 0 - кисть, 1 - ластик, 3 - обход границы
+        private int mode;                          // 0 - кисть, 1 - ластик, 2 - лассо, 3 - обход границы
         private Color contourColor = Color.Black;
         private Color fillColor = Color.LightSkyBlue;
         private bool useTexture;
 
         private readonly HashSet<Point> lassoPixels = new HashSet<Point>();
-        private Color boundaryHighlightColor = Color.Yellow;
+        private Color boundaryHighlightColor = Color.Red;
 
         // -------- История для отката --------
         private const int MaxUndoSteps = 20;
@@ -99,32 +99,37 @@ namespace RasterAlgorithms
             mode = 0;
             brushRadioButton.Checked = true;
 
-            if (openFileDialog.ShowDialog() == DialogResult.OK)
+            if (openFileDialog.ShowDialog() != DialogResult.OK) return;
+
+            try
             {
-                try
+                PushUndo();
+
+                using Bitmap source = new Bitmap(openFileDialog.FileName);
+
+                int w = canvas.ClientSize.Width;
+                int h = canvas.ClientSize.Height;
+
+                Bitmap fitted = new Bitmap(w, h);
+                using (Graphics g = Graphics.FromImage(fitted))
                 {
-                    PushUndo();
-                    backgroundTexture?.Dispose();
-                    backgroundTexture = new Bitmap(openFileDialog.FileName);
-                    SetTexturePreview();
-                    useTexture = true;
-                    SetCanvasBitmap(new Bitmap(backgroundTexture));
-                    MessageBox.Show(
-                        $"Фон загружен: {backgroundTexture.Width}x{backgroundTexture.Height}",
-                        "Успех",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information
-                    );
+                    // Белый фон вместо прозрачности
+                    g.Clear(Color.White);
+                    g.InterpolationMode = InterpolationMode.NearestNeighbor;
+                    g.PixelOffsetMode = PixelOffsetMode.Half;
+                    g.DrawImageUnscaled(source, 0, 0);
                 }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(
-                        $"Ошибка загрузки: {ex.Message}",
-                        "Ошибка",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error
-                    );
-                }
+
+                canvasBitmap?.Dispose();
+                canvasBitmap = fitted;
+                canvas.Image = canvasBitmap;
+                canvas.Invalidate();
+
+                statusLabel.Text = $"Изображение загружено: {source.Width}x{source.Height}";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка загрузки: {ex.Message}", "Ошибка");
             }
         }
 
@@ -274,14 +279,17 @@ namespace RasterAlgorithms
             Bitmap snapshot = new Bitmap(canvasBitmap);
             undoStack.Push(snapshot);
 
-            // Ограничиваем глубину истории
-            while (undoStack.Count > MaxUndoSteps)
+            // Ограничиваем глубину истории: удаляем самые старые снимки
+            if (undoStack.Count > MaxUndoSteps)
             {
-                Bitmap oldest = undoStack.Pop();
-                // Pop вернёт самый верхний, но нам нужен самый старый — 
-                // поэтому Stack не подходит для «срезания дна».
-                // Проще ограничить иначе: см. ниже.
-                oldest.Dispose();
+                var temp = new Stack<Bitmap>();
+                int keep = MaxUndoSteps;
+                while (undoStack.Count > 0 && keep-- > 0)
+                    temp.Push(undoStack.Pop());
+                while (undoStack.Count > 0)
+                    undoStack.Pop()?.Dispose();
+                while (temp.Count > 0)
+                    undoStack.Push(temp.Pop());
             }
         }
 
@@ -333,7 +341,8 @@ namespace RasterAlgorithms
                 if (eraserRadioButton.Checked) color = Color.White;
                 else color = contourColor;
 
-                using Pen pen = new Pen(color, lassoRadioButton.Checked ? 2 : 6);
+                // Тонкая линия в 1 пиксель — необходимо для корректного обхода
+                using Pen pen = new Pen(color, 1);
                 graphics.DrawLine(pen, lastDrawPoint, point);
             }
 
@@ -358,21 +367,19 @@ namespace RasterAlgorithms
                     graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
                     graphics.PixelOffsetMode = PixelOffsetMode.Half;
 
-                    using Pen pen = new Pen(contourColor, 2);
+                    using Pen pen = new Pen(contourColor, 1);
                     graphics.DrawLine(pen, lastDrawPoint, lassoStartPoint);
                 }
 
                 foreach (Point p in RasterizeLine(lastDrawPoint, lassoStartPoint))
                     lassoPixels.Add(p);
 
-                ThickenPixels(lassoPixels);
                 canvas.Invalidate();
             }
 
             if (isDrawing && !mouseMoved && e.Button == MouseButtons.Left)
             {
-                // Клик без движения — заливка. Снимок для отката уже сделан
-                // в MouseDown, поэтому здесь его повторно не делаем.
+                // Клик без движения — заливка.
                 Fill(LimitToCanvas(e.Location), useTexture);
             }
 
@@ -388,7 +395,7 @@ namespace RasterAlgorithms
         }
 
         // ============================================================
-        //  Брезенхем
+        //  Брезенхем (для линии)
         // ============================================================
         private static IEnumerable<Point> RasterizeLine(Point a, Point b)
         {
@@ -405,35 +412,8 @@ namespace RasterAlgorithms
 
                 int e2 = 2 * err;
                 if (e2 > -dy) { err -= dy; x0 += sx; }
-                if (e2 < dx)  { err += dx; y0 += sy; }
+                if (e2 < dx) { err += dx; y0 += sy; }
             }
-        }
-
-        private void ThickenPixels(IEnumerable<Point> pixels)
-        {
-            if (canvasBitmap == null || pixels == null) return;
-
-            int w = canvasBitmap.Width;
-            int h = canvasBitmap.Height;
-
-            HashSet<Point> toPaint = new HashSet<Point>();
-            foreach (Point p in pixels)
-            {
-                for (int dx = -1; dx <= 1; dx++)
-                {
-                    for (int dy = -1; dy <= 1; dy++)
-                    {
-                        if (dx == 0 && dy == 0) continue;
-                        int nx = p.X + dx;
-                        int ny = p.Y + dy;
-                        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
-                        toPaint.Add(new Point(nx, ny));
-                    }
-                }
-            }
-
-            foreach (Point p in toPaint)
-                canvasBitmap.SetPixel(p.X, p.Y, contourColor);
         }
 
         // ============================================================
@@ -534,81 +514,157 @@ namespace RasterAlgorithms
         {
             if (canvasBitmap == null) return;
 
-            Point? startOpt = FindBoundaryPoint(clickedPoint);
+            // 1) Находим стартовый пиксель: ближайший не-белый пиксель в радиусе 8 от точки клика
+            Point? startOpt = FindNonWhiteNear(clickedPoint, 8);
             if (!startOpt.HasValue)
             {
                 MessageBox.Show(
-                    "Не нашёл границу рядом с кликом.\nУбедитесь, что кликаете по линии контура.",
+                    "Не нашёл не-белый пиксель рядом с кликом.\n" +
+                    "Кликните ближе к контуру.",
+                    "Обход границы");
+                return;
+            }
+            Point start = startOpt.Value;
+
+            // 2) Строим МАСКУ границы: берем все не-белые пиксели,
+            //    чтобы учесть "сглаженные" пиксели
+            int W = canvasBitmap.Width;
+            int H = canvasBitmap.Height;
+            bool[,] isBorder = new bool[W, H];
+
+            for (int y = 0; y < H; y++)
+            {
+                for (int x = 0; x < W; x++)
+                {
+                    Color c = canvasBitmap.GetPixel(x, y);
+                    // "Не белый" пиксель = пиксель-граница
+                    if (!(c.R > 230 && c.G > 230 && c.B > 230))
+                        isBorder[x, y] = true;
+                }
+            }
+
+            // 3) Собираем 8-связную компоненту из маски
+            HashSet<Point> component = CollectComponent(start, isBorder); // BFS по 8-связности
+            if (component.Count < 3)
+            {
+                MessageBox.Show(
+                    $"Компонента слишком маленькая: {component.Count}.\n" +
+                    "Проверьте, что кликаете по контуру.",
                     "Обход границы");
                 return;
             }
 
-            Color boundaryColor = canvasBitmap.GetPixel(startOpt.Value.X, startOpt.Value.Y);
-            HashSet<Point> allBoundary = CollectAllBoundaryPixels(startOpt.Value, boundaryColor);
+            // 4) Определяем толщину: если >40% пикселей имеют всех 8 соседей
+            //    внутри компоненты — граница "толстая", обходим только край
+            double interiorRatio = ComputeInteriorRatio(component);
+            bool thick = interiorRatio > 0.4;
 
-            HashSet<Point> outerBoundary = new HashSet<Point>();
-            foreach (Point p in allBoundary)
-                if (HasNonBoundaryNeighbor(p, allBoundary, boundaryColor))
-                    outerBoundary.Add(p);
-
-            if (outerBoundary.Count == 0)
+            HashSet<Point> target = component;
+            if (thick)
             {
-                MessageBox.Show("Не удалось выделить внешнюю границу.", "Обход границы");
-                return;
-            }
-
-            List<Point> boundary = OrderBoundary(outerBoundary, boundaryColor);
-            if (boundary.Count == 0)
-            {
-                MessageBox.Show("Не удалось упорядочить обход.", "Обход границы");
-                return;
-            }
-
-            using (Graphics g = Graphics.FromImage(canvasBitmap))
-            using (Pen pen = new Pen(boundaryHighlightColor, 1))
-            {
-                if (boundary.Count > 1)
+                target = ExtractEdgePixels(component);
+                if (target.Count < 3)
                 {
-                    List<Point> shifted = new List<Point>(boundary.Count);
-                    foreach (Point p in boundary)
-                    {
-                        Point outward = FindOutwardDirection(p, boundaryColor);
-                        shifted.Add(new Point(p.X + outward.X, p.Y + outward.Y));
-                    }
-                    g.DrawLines(pen, shifted.ToArray());
+                    MessageBox.Show("Не удалось выделить край границы.", "Обход границы");
+                    return;
                 }
             }
 
-            canvas.Invalidate();
-            statusLabel.Text = $"Обход завершён. Точек в контуре: {boundary.Count}";
-        }
-
-        private Point FindOutwardDirection(Point p, Color boundaryColor)
-        {
-            Point[] dirs = {
-                new Point(0, -1), new Point(1, -1), new Point(1, 0), new Point(1, 1),
-                new Point(0, 1), new Point(-1, 1), new Point(-1, 0), new Point(-1, -1)
-            };
-
-            foreach (var d in dirs)
+            // 5) Стартовая точка: самая верхняя-левая из target.
+            //    Гарантирует старт на внешнем крае, независимо от выбранной мышкой точки
+            Point traceStart = default;
+            bool foundStart = false;
+            foreach (Point p in target)
             {
-                Point n = new Point(p.X + d.X, p.Y + d.Y);
-                if (!IsBoundaryAt(n, boundaryColor)) return d;
+                if (!foundStart
+                    || p.Y < traceStart.Y
+                    || (p.Y == traceStart.Y && p.X < traceStart.X))
+                {
+                    traceStart = p;
+                    foundStart = true;
+                }
             }
-            return new Point(0, 0);
+            if (!foundStart)
+            {
+                MessageBox.Show("Не удалось выбрать стартовую точку.", "Обход границы");
+                return;
+            }
+
+            // 6) Обход по спецификации
+            // Индексы: 0=E, 1=SE, 2=S, 3=SW, 4=W, 5=NW, 6=N, 7=NE (по часовой стрелке, начиная с востока)
+            List<Point> ordered = TraceBoundaryOrdered(traceStart, target);
+            if (ordered.Count < 2)
+            {
+                MessageBox.Show(
+                    $"Обход вернул {ordered.Count} точек. Что-то не так с контуром.",
+                    "Обход границы");
+                return;
+            }
+
+            // 7) Рисуем каждое ребро линией, а не точками
+            using (Graphics g = Graphics.FromImage(canvasBitmap))
+            using (Pen pen = new Pen(Color.Red, 2))
+            {
+                for (int i = 0; i < ordered.Count - 1; i++)
+                {
+                    if (ordered[i] != ordered[i + 1])
+                        g.DrawLine(pen, ordered[i], ordered[i + 1]);
+                }
+                if (ordered.Count > 1 && ordered[ordered.Count - 1] != ordered[0])
+                    g.DrawLine(pen, ordered[ordered.Count - 1], ordered[0]);
+            }
+
+            canvas.Invalidate();
+            statusLabel.Text =
+                $"Готово. Компонента: {component.Count}, " +
+                $"край: {target.Count}, в контуре: {ordered.Count}, " +
+                $"толщина: {(thick ? "толстая" : "тонкая")}";
         }
 
-        private HashSet<Point> CollectAllBoundaryPixels(Point start, Color boundaryColor)
+        /// <summary>
+        /// Ближайший не-белый пиксель к точке (в радиусе radius).
+        /// </summary>
+        private Point? FindNonWhiteNear(Point click, int radius)
         {
-            HashSet<Point> visited = new HashSet<Point>();
-            Queue<Point> queue = new Queue<Point>();
+            if (canvasBitmap == null) return null;
+
+            for (int r = 0; r <= radius; r++)
+            {
+                for (int y = click.Y - r; y <= click.Y + r; y++)
+                {
+                    for (int x = click.X - r; x <= click.X + r; x++)
+                    {
+                        if (x < 0 || x >= canvasBitmap.Width) continue;
+                        if (y < 0 || y >= canvasBitmap.Height) continue;
+
+                        Color c = canvasBitmap.GetPixel(x, y);
+                        if (!(c.R > 230 && c.G > 230 && c.B > 230))
+                            return new Point(x, y);
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// BFS по маске: собирает 8-связную компоненту isBorder, содержащую start
+        /// </summary>
+        private HashSet<Point> CollectComponent(Point start, bool[,] isBorder)
+        {
+            var visited = new HashSet<Point>();
+            if (canvasBitmap == null) return visited;
+
+            int W = canvasBitmap.Width;
+            int H = canvasBitmap.Height;
+
+            if (start.X < 0 || start.X >= W || start.Y < 0 || start.Y >= H) return visited;
+            if (!isBorder[start.X, start.Y]) return visited;
+
+            var queue = new Queue<Point>();
             queue.Enqueue(start);
             visited.Add(start);
 
-            int maxIter = canvasBitmap!.Width * canvasBitmap.Height;
-            int iter = 0;
-
-            while (queue.Count > 0 && iter++ < maxIter)
+            while (queue.Count > 0)
             {
                 Point p = queue.Dequeue();
                 for (int dx = -1; dx <= 1; dx++)
@@ -616,119 +672,168 @@ namespace RasterAlgorithms
                     for (int dy = -1; dy <= 1; dy++)
                     {
                         if (dx == 0 && dy == 0) continue;
-                        Point n = new Point(p.X + dx, p.Y + dy);
+                        int nx = p.X + dx;
+                        int ny = p.Y + dy;
+                        if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+                        if (!isBorder[nx, ny]) continue;
+                        Point n = new Point(nx, ny);
                         if (visited.Contains(n)) continue;
-                        if (!IsBoundaryAt(n, boundaryColor)) continue;
                         visited.Add(n);
                         queue.Enqueue(n);
                     }
                 }
             }
-
             return visited;
         }
 
-        private bool HasNonBoundaryNeighbor(Point p, HashSet<Point> allBoundary, Color boundaryColor)
+        /// <summary>
+        /// Обход границы компоненты по спецификации:
+        ///  - старт — заданная точка;
+        ///  - первое направление — вниз;
+        ///  - далее — 90° по часовой стрелке от направления входа;
+        ///  - поиск следующей — против часовой стрелки.
+        ///  - остановка — по возврату в старт после того как прошли
+        ///    хотя бы половину компоненты (защита от ложного замыкания).
+        /// </summary>
+        private List<Point> TraceBoundaryOrdered(Point start, HashSet<Point> component)
         {
-            Point[] four = {
-                new Point(0, -1), new Point(0, 1), new Point(-1, 0), new Point(1, 0)
-            };
+            var result = new List<Point>();
+            if (component == null || component.Count == 0) return result;
+            if (component.Count == 1) { result.Add(start); return result; }
 
-            foreach (var d in four)
+            int[] dx = { 1, 1, 0, -1, -1, -1, 0, 1 };
+            int[] dy = { 0, 1, 1, 1, 0, -1, -1, -1 };
+
+            bool InComp(int x, int y) => component.Contains(new Point(x, y));
+
+            Point startPoint = start;
+
+            // Первое направление — вниз, поиск против часовой стрелки: 2,1,0,7,6,5,4,3
+            int firstDir = -1;
+            for (int i = 0; i < 8; i++)
             {
-                Point n = new Point(p.X + d.X, p.Y + d.Y);
-                if (!allBoundary.Contains(n) && !IsBoundaryAt(n, boundaryColor))
-                    return true;
-            }
-            return false;
-        }
-
-        private List<Point> OrderBoundary(HashSet<Point> outer, Color boundaryColor)
-        {
-            List<Point> result = new List<Point>();
-
-            Point start = default;
-            bool found = false;
-            foreach (Point p in outer)
-                if (!found || p.Y < start.Y || (p.Y == start.Y && p.X < start.X))
+                int d = ((2 - i) % 8 + 8) % 8;
+                if (InComp(startPoint.X + dx[d], startPoint.Y + dy[d]))
                 {
-                    start = p;
-                    found = true;
+                    firstDir = d;
+                    break;
+                }
+            }
+
+            if (firstDir < 0) { result.Add(startPoint); return result; }
+
+            Point prev = startPoint;
+            Point curr = new Point(startPoint.X + dx[firstDir], startPoint.Y + dy[firstDir]);
+            int arrivedDir = firstDir;
+
+            result.Add(startPoint);
+
+            // Порог "минимальной длины обхода" — не даём остановиться раньше,
+            // чем пройдём хотя бы половину компоненты
+            int minStepsBeforeStop = Math.Max(4, component.Count / 2);
+
+            int maxSteps = component.Count * 8 + 64;
+            int steps = 0;
+
+            while (steps++ < maxSteps)
+            {
+                // Проверка замыкания — только после того, как прошли минимум
+                if (curr == startPoint && result.Count >= minStepsBeforeStop)
+                {
+                    break;
                 }
 
-            if (!found) return result;
+                result.Add(curr);
 
-            Point current = start;
-            int dir = 0;
-            Point[] dirs = {
-                new Point(1, 0), new Point(0, 1), new Point(-1, 0), new Point(0, -1)
-            };
-
-            HashSet<Point> visited = new HashSet<Point>();
-            Point firstPoint = start;
-            int firstDir = -1;
-            int maxSteps = outer.Count * 4 + 100;
-            int step = 0;
-
-            while (step++ < maxSteps)
-            {
-                result.Add(current);
-                visited.Add(current);
-
-                int[] tryDirs = { (dir + 1) % 4, dir, (dir + 3) % 4, (dir + 2) % 4 };
-                bool moved = false;
-
-                foreach (int d in tryDirs)
+                int searchStart = (arrivedDir + 2) % 8;
+                int foundDir = -1;
+                for (int i = 0; i < 8; i++)
                 {
-                    Point candidate = new Point(current.X + dirs[d].X, current.Y + dirs[d].Y);
-                    if (outer.Contains(candidate) && !visited.Contains(candidate))
+                    int d = ((searchStart - i) % 8 + 8) % 8;
+                    if (InComp(curr.X + dx[d], curr.Y + dy[d]))
                     {
-                        dir = d;
-                        current = candidate;
-                        moved = true;
+                        foundDir = d;
                         break;
                     }
                 }
 
-                if (!moved)
-                {
-                    Point[] diag = {
-                        new Point(1, 1), new Point(1, -1),
-                        new Point(-1, 1), new Point(-1, -1)
-                    };
-                    foreach (var d in diag)
-                    {
-                        Point candidate = new Point(current.X + d.X, current.Y + d.Y);
-                        if (outer.Contains(candidate) && !visited.Contains(candidate))
-                        {
-                            current = candidate;
-                            moved = true;
-                            break;
-                        }
-                    }
-                }
+                if (foundDir < 0) break;
 
-                if (!moved) break;
-                if (current == firstPoint && firstDir == dir) break;
-                if (firstDir == -1) firstDir = dir;
+                prev = curr;
+                curr = new Point(curr.X + dx[foundDir], curr.Y + dy[foundDir]);
+                arrivedDir = foundDir;
             }
+
+            if (result.Count > 1 && result[result.Count - 1] != result[0])
+                result.Add(result[0]);
 
             return result;
         }
 
-        private Point? FindBoundaryPoint(Point point)
+        /// <summary>
+        /// Доля пикселей компоненты, у которых все 8 соседей тоже в компоненте.
+        /// Для тонкой линии ~ 0; для толстой полосы > 0.5.
+        /// </summary>
+        private double ComputeInteriorRatio(HashSet<Point> component)
         {
-            for (int radius = 0; radius <= 5; radius++)
+            if (component.Count == 0) return 0;
+
+            int interior = 0;
+            foreach (Point p in component)
             {
-                for (int y = point.Y - radius; y <= point.Y + radius; y++)
-                {
-                    for (int x = point.X - radius; x <= point.X + radius; x++)
+                int cnt = 0;
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dy = -1; dy <= 1; dy++)
                     {
-                        if (IsBoundary(new Point(x, y))) return new Point(x, y);
+                        if (dx == 0 && dy == 0) continue;
+                        if (component.Contains(new Point(p.X + dx, p.Y + dy))) cnt++;
                     }
+                if (cnt == 8) interior++;
+            }
+            return (double)interior / component.Count;
+        }
+
+        /// <summary>
+        /// Возвращает пиксели компоненты, у которых есть хотя бы один 8-сосед
+        /// вне компоненты (т.е. "краевые" пиксели толстой полосы).
+        /// </summary>
+        private HashSet<Point> ExtractEdgePixels(HashSet<Point> component)
+        {
+            var edge = new HashSet<Point>();
+            foreach (Point p in component)
+            {
+                bool isEdge = false;
+                for (int dx = -1; dx <= 1 && !isEdge; dx++)
+                    for (int dy = -1; dy <= 1 && !isEdge; dy++)
+                    {
+                        if (dx == 0 && dy == 0) continue;
+                        if (!component.Contains(new Point(p.X + dx, p.Y + dy)))
+                            isEdge = true;
+                    }
+                if (isEdge) edge.Add(p);
+            }
+            return edge;
+        }
+
+        /// <summary>
+        /// Ближайший к точке пиксель из множества (по евклидову расстоянию).
+        /// </summary>
+        private Point FindNearestInSet(Point target, HashSet<Point> set)
+        {
+            Point best = default;
+            long bestDist = long.MaxValue;
+            foreach (Point p in set)
+            {
+                long dx = p.X - target.X;
+                long dy = p.Y - target.Y;
+                long d = dx * dx + dy * dy;
+                if (d < bestDist)
+                {
+                    bestDist = d;
+                    best = p;
                 }
             }
-            return null;
+            return best;
         }
 
         private bool IsBoundary(Point point)
@@ -741,16 +846,6 @@ namespace RasterAlgorithms
 
         private bool IsBoundary(Color color) => color.ToArgb() == contourColor.ToArgb();
 
-        private bool IsBoundaryAt(Point point, Color boundaryColor)
-        {
-            if (canvasBitmap == null) return false;
-            if (point.X < 0 || point.X >= canvasBitmap.Width ||
-                point.Y < 0 || point.Y >= canvasBitmap.Height) return false;
-
-            Color c = canvasBitmap.GetPixel(point.X, point.Y);
-            return c.ToArgb() == boundaryColor.ToArgb();
-        }
-
         private void SetTexturePreview()
         {
             if (backgroundTexture == null) return;
@@ -760,7 +855,6 @@ namespace RasterAlgorithms
 
         // ============================================================
         //  ИЗМЕНЕНИЕ РАЗМЕРА ХОЛСТА
-        //  Старый рисунок копируется 1:1, новые области БЕЛЫЕ.
         // ============================================================
         private void canvas_SizeChanged(object? sender, EventArgs e)
         {
