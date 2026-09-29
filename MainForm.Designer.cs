@@ -33,6 +33,20 @@ namespace RasterAlgorithms
         private System.Windows.Forms.StatusStrip statusStrip;
         private System.Windows.Forms.ToolStripStatusLabel statusLabel;
 
+        // ================================================================
+        // Задание 2: отрезки
+        private System.Windows.Forms.Panel task2ToolsPanel;
+        private System.Windows.Forms.PictureBox lineCanvas;
+        private System.Windows.Forms.RadioButton bresenhamRadioButton;
+        private System.Windows.Forms.RadioButton wuRadioButton;
+        private System.Windows.Forms.Button lineColorButton;
+        private System.Windows.Forms.Panel lineColorPanel;
+        private System.Windows.Forms.NumericUpDown lineThicknessUpDown;
+        private System.Windows.Forms.Label lineThicknessLabel;
+        private System.Windows.Forms.Button clearLineCanvasButton;
+        private System.Windows.Forms.Label lineInfoLabel;
+        // ================================================================
+
         protected override void Dispose(bool disposing)
         {
             if (disposing && (components != null))
@@ -316,6 +330,104 @@ namespace RasterAlgorithms
             tabPage2.Size = new System.Drawing.Size(1016, 616);
             tabPage2.TabIndex = 1;
             tabPage2.Text = "Задание 2";
+
+            // ================================================================
+            // Задание 2: панель инструментов
+            task2ToolsPanel = new System.Windows.Forms.Panel();
+            lineCanvas = new System.Windows.Forms.PictureBox();
+            bresenhamRadioButton = new System.Windows.Forms.RadioButton();
+            wuRadioButton = new System.Windows.Forms.RadioButton();
+            lineColorButton = new System.Windows.Forms.Button();
+            lineColorPanel = new System.Windows.Forms.Panel();
+            lineThicknessUpDown = new System.Windows.Forms.NumericUpDown();
+            lineThicknessLabel = new System.Windows.Forms.Label();
+            clearLineCanvasButton = new System.Windows.Forms.Button();
+            lineInfoLabel = new System.Windows.Forms.Label();
+
+            ((System.ComponentModel.ISupportInitialize)lineCanvas).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)lineThicknessUpDown).BeginInit();
+            task2ToolsPanel.SuspendLayout();
+            tabPage2.SuspendLayout();
+
+            task2ToolsPanel.Controls.Add(bresenhamRadioButton);
+            task2ToolsPanel.Controls.Add(wuRadioButton);
+            task2ToolsPanel.Controls.Add(lineColorButton);
+            task2ToolsPanel.Controls.Add(lineColorPanel);
+            task2ToolsPanel.Controls.Add(lineThicknessLabel);
+            task2ToolsPanel.Controls.Add(lineThicknessUpDown);
+            task2ToolsPanel.Controls.Add(clearLineCanvasButton);
+            task2ToolsPanel.Controls.Add(lineInfoLabel);
+            task2ToolsPanel.Dock = System.Windows.Forms.DockStyle.Left;
+            task2ToolsPanel.Name = "task2ToolsPanel";
+            task2ToolsPanel.Size = new System.Drawing.Size(220, 616);
+
+            // Брезенхем
+            bresenhamRadioButton.AutoSize = true;
+            bresenhamRadioButton.Checked = true;
+            bresenhamRadioButton.Location = new System.Drawing.Point(12, 14);
+            bresenhamRadioButton.Text = "Брезенхем (целочисленный)";
+            bresenhamRadioButton.Name = "bresenhamRadioButton";
+
+            // Ву
+            wuRadioButton.AutoSize = true;
+            wuRadioButton.Location = new System.Drawing.Point(12, 42);
+            wuRadioButton.Text = "Ву (сглаженный)";
+            wuRadioButton.Name = "wuRadioButton";
+
+            // Кнопка выбора цвета
+            lineColorButton.Location = new System.Drawing.Point(12, 80);
+            lineColorButton.Size = new System.Drawing.Size(145, 28);
+            lineColorButton.Text = "Цвет линии";
+            lineColorButton.Click += lineColorButton_Click;
+
+            // Превью цвета
+            lineColorPanel.BackColor = System.Drawing.Color.Black;
+            lineColorPanel.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            lineColorPanel.Location = new System.Drawing.Point(166, 84);
+            lineColorPanel.Size = new System.Drawing.Size(24, 20);
+
+            // Толщина
+            lineThicknessLabel.AutoSize = true;
+            lineThicknessLabel.Location = new System.Drawing.Point(12, 122);
+            lineThicknessLabel.Text = "Толщина (для Ву — 1):";
+
+            lineThicknessUpDown.Location = new System.Drawing.Point(12, 144);
+            lineThicknessUpDown.Size = new System.Drawing.Size(60, 23);
+            lineThicknessUpDown.Minimum = 1;
+            lineThicknessUpDown.Maximum = 10;
+            lineThicknessUpDown.Value = 1;
+
+            // Очистить
+            clearLineCanvasButton.Location = new System.Drawing.Point(12, 185);
+            clearLineCanvasButton.Size = new System.Drawing.Size(178, 30);
+            clearLineCanvasButton.Text = "Очистить";
+            clearLineCanvasButton.Click += clearLineCanvasButton_Click;
+
+            // Инфо
+            lineInfoLabel.Location = new System.Drawing.Point(12, 225);
+            lineInfoLabel.Size = new System.Drawing.Size(200, 200);
+            lineInfoLabel.Text = "ЛКМ — задать начало отрезка.\nЛКМ — задать конец.";
+            lineInfoLabel.Name = "lineInfoLabel";
+
+            // Холст для отрезков
+            lineCanvas.BackColor = System.Drawing.Color.White;
+            lineCanvas.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            lineCanvas.Dock = System.Windows.Forms.DockStyle.Fill;
+            lineCanvas.Name = "lineCanvas";
+            lineCanvas.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Normal;
+            lineCanvas.MouseDown += lineCanvas_MouseDown;
+            lineCanvas.SizeChanged += lineCanvas_SizeChanged;
+
+            tabPage2.Controls.Add(lineCanvas);
+            tabPage2.Controls.Add(task2ToolsPanel);
+
+            ((System.ComponentModel.ISupportInitialize)lineCanvas).EndInit();
+            ((System.ComponentModel.ISupportInitialize)lineThicknessUpDown).EndInit();
+            task2ToolsPanel.ResumeLayout(false);
+            task2ToolsPanel.PerformLayout();
+            tabPage2.ResumeLayout(false);
+
+            // ================================================================
 
             //
             // tabPage3

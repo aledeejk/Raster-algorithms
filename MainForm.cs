@@ -29,6 +29,15 @@ namespace RasterAlgorithms
         private const int MaxUndoSteps = 20;
         private readonly Stack<Bitmap> undoStack = new Stack<Bitmap>();
 
+
+        // ================================================================
+        // ==== Задание 2: состояние
+        private Point? lineStartPoint;         // начало текущего отрезка
+        private Color lineColor = Color.Black; // цвет линии
+        private int lineThickness = 1;         // толщина
+        private Bitmap? lineCanvasBitmap;      // холст
+        // ================================================================
+
         public MainForm()
         {
             InitializeComponent();
@@ -270,6 +279,31 @@ namespace RasterAlgorithms
         }
 
         // ============================================================
+        // Задание 2: обработчики событий
+        private void lineColorButton_Click(object? sender, EventArgs e)
+        {
+            using ColorDialog dialog = new ColorDialog();
+            dialog.Color = lineColor;
+            if (dialog.ShowDialog() == DialogResult.OK)
+            {
+                lineColor = dialog.Color;
+                lineColorPanel.BackColor = lineColor;
+            }
+        }
+
+        private void clearLineCanvasButton_Click(object? sender, EventArgs e)
+        {
+            if (lineCanvasBitmap == null) return;
+
+            using (Graphics g = Graphics.FromImage(lineCanvasBitmap))
+                g.Clear(Color.White);
+
+            lineCanvas.Invalidate();
+            lineInfoLabel.Text = "ЛКМ — задать начало отрезка.\nЛКМ — задать конец.";
+        }
+        // ============================================================
+
+
         //  ИСТОРИЯ
         // ============================================================
         private void PushUndo()
@@ -904,6 +938,210 @@ namespace RasterAlgorithms
             canvasBitmap = fitted;
             canvas.Image = canvasBitmap;
             canvas.Invalidate();
+        }
+
+        // ================================================================
+        // ==== Задание 2: методы
+
+        /// <summary>
+        /// Инициализация холста.
+        /// Вызывается при первом рисовании и при изменении размера.
+        /// </summary>
+        private void EnsureLineCanvasBitmap()
+        {
+            if (lineCanvas.ClientSize.Width <= 0 || lineCanvas.ClientSize.Height <= 0)
+                return;
+
+            int w = lineCanvas.ClientSize.Width;
+            int h = lineCanvas.ClientSize.Height;
+
+            if (lineCanvasBitmap != null &&
+                lineCanvasBitmap.Width == w &&
+                lineCanvasBitmap.Height == h)
+                return;
+
+            Bitmap newBmp = new Bitmap(w, h);
+            using (Graphics g = Graphics.FromImage(newBmp))
+            {
+                g.Clear(Color.White);
+                if (lineCanvasBitmap != null)
+                {
+                    g.InterpolationMode = InterpolationMode.NearestNeighbor;
+                    g.PixelOffsetMode = PixelOffsetMode.Half;
+                    g.DrawImageUnscaled(lineCanvasBitmap, 0, 0);
+                }
+            }
+            lineCanvasBitmap?.Dispose();
+            lineCanvasBitmap = newBmp;
+            lineCanvas.Image = lineCanvasBitmap;
+        }
+
+        /// <summary>
+        /// Обработка клика мышкой по холсту. 
+        /// Первый клик задаёт начало отрезка.Второй клик — конец, отрезок рисуется.
+        /// Cостояние lineStartPoint сбрасывается
+        /// </summary>
+        private void lineCanvas_MouseDown(object? sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+
+            EnsureLineCanvasBitmap();
+            if (lineCanvasBitmap == null) return;
+
+            Point p = new Point(
+                Math.Max(0, Math.Min(lineCanvasBitmap.Width - 1, e.X)),
+                Math.Max(0, Math.Min(lineCanvasBitmap.Height - 1, e.Y)));
+
+            if (lineStartPoint == null)
+            {
+                // Первый клик — задаём начало
+                lineStartPoint = p;
+                lineInfoLabel.Text =
+                    $"Начало: ({p.X}, {p.Y})\n" +
+                    "Кликните второй раз — конец отрезка.";
+            }
+            else
+            {
+                // Второй клик — рисуем
+                Point start = lineStartPoint.Value;
+                Point end = p;
+
+                lineThickness = (int)lineThicknessUpDown.Value;
+
+                if (bresenhamRadioButton.Checked)
+                    DrawLineBresenham(start, end, lineColor, lineThickness);
+                else
+                    DrawLineWu(start, end, lineColor);
+
+                lineStartPoint = null;
+                lineCanvas.Invalidate();
+                lineInfoLabel.Text =
+                    $"Отрезок: ({start.X},{start.Y}) → ({end.X},{end.Y})\n" +
+                    $"Алгоритм: {(bresenhamRadioButton.Checked ? "Брезенхем" : "Ву")}";
+            }
+        }
+
+        // Отображение координат в статус-баре
+        private void lineCanvas_MouseMove(object? sender, MouseEventArgs e)
+        {
+            statusLabel.Text = $"Координаты: ({e.X}, {e.Y})";
+        }
+
+        // Изменение размера окна
+        private void lineCanvas_SizeChanged(object? sender, EventArgs e)
+        {
+            EnsureLineCanvasBitmap();
+        }
+
+        /// <summary>
+        /// Целочисленный алгоритм Брезенхема.
+        /// Толщина реализуется как квадрат thickness × thickness вокруг каждого пикселя.
+        /// </summary>
+        private void DrawLineBresenham(Point a, Point b, Color color, int thickness)
+        {
+            if (lineCanvasBitmap == null) return;
+
+            int x0 = a.X, y0 = a.Y, x1 = b.X, y1 = b.Y;
+
+            int dx = Math.Abs(x1 - x0);
+            int dy = -Math.Abs(y1 - y0);
+            int sx = x0 < x1 ? 1 : -1;
+            int sy = y0 < y1 ? 1 : -1;
+            int err = dx + dy;
+
+            int half = (thickness - 1) / 2;
+            int extra = (thickness - 1) - half;
+
+            while (true)
+            {
+                // Рисуем "жирный" пиксель
+                for (int ox = -half; ox <= extra; ox++)
+                {
+                    for (int oy = -half; oy <= extra; oy++)
+                    {
+                        int px = x0 + ox;
+                        int py = y0 + oy;
+                        if (px < 0 || px >= lineCanvasBitmap.Width) continue;
+                        if (py < 0 || py >= lineCanvasBitmap.Height) continue;
+                        lineCanvasBitmap.SetPixel(px, py, color);
+                    }
+                }
+
+                if (x0 == x1 && y0 == y1) break;
+
+                int e2 = 2 * err;
+                if (e2 >= dy) { err += dy; x0 += sx; }
+                if (e2 <= dx) { err += dx; y0 += sy; }
+            }
+        }
+
+        /// <summary>
+        /// Алгоритм Ву (У Сяолиня) — сглаженная линия.
+        /// Соседние пиксели рисуются с разной яркостью
+        /// пропорционально расстоянию до идеальной прямой.
+        /// </summary>
+        private void DrawLineWu(Point a, Point b, Color color)
+        {
+            if (lineCanvasBitmap == null) return;
+
+            int x0 = a.X, y0 = a.Y, x1 = b.X, y1 = b.Y;
+
+            // Если линия более вертикальная, чем горизонтальная — 
+            // меняем оси, чтобы основная ось была X (иначе сглаживание будет по Y).
+            bool steep = Math.Abs(y1 - y0) > Math.Abs(x1 - x0);
+            if (steep)
+            {
+                (x0, y0) = (y0, x0);
+                (x1, y1) = (y1, x1);
+            }
+            if (x0 > x1)
+            {
+                (x0, x1) = (x1, x0);
+                (y0, y1) = (y1, y0);
+            }
+
+            int dx = x1 - x0;
+            int dy = y1 - y0;
+            double gradient = dx == 0 ? 1.0 : (double)dy / dx;
+
+            // Первая точка
+            double y = y0;
+            for (int x = x0; x <= x1; x++)
+            {
+                int iy = (int)Math.Floor(y);
+                double frac = y - iy;
+
+                PlotWu(x, iy, 1.0 - frac, color, steep);
+                PlotWu(x, iy + 1, frac, color, steep);
+
+                y += gradient;
+            }
+        }
+
+        /// <summary>
+        /// Рисует один "размазанный" пиксель с заданной интенсивностью.
+        /// </summary>
+        private void PlotWu(int x, int y, double intensity, Color color, bool steep)
+        {
+            if (lineCanvasBitmap == null) return;
+            if (intensity <= 0.0) return;
+            if (intensity > 1.0) intensity = 1.0;
+
+            int px = steep ? y : x;
+            int py = steep ? x : y;
+
+            if (px < 0 || px >= lineCanvasBitmap.Width) return;
+            if (py < 0 || py >= lineCanvasBitmap.Height) return;
+
+            // Смешиваем цвет линии с существующим цветом пикселя
+            // пропорционально intensity
+            Color old = lineCanvasBitmap.GetPixel(px, py);
+
+            int r = (int)(color.R * intensity + old.R * (1.0 - intensity));
+            int g = (int)(color.G * intensity + old.G * (1.0 - intensity));
+            int bl = (int)(color.B * intensity + old.B * (1.0 - intensity));
+
+            lineCanvasBitmap.SetPixel(px, py, Color.FromArgb(r, g, bl));
         }
     }
 }
