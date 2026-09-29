@@ -1,23 +1,23 @@
 {
   "format": 1,
   "restore": {
-    "D:\\mechmat\\computer graphics\\lab3\\Raster-algorithms\\RasterAlgorithms.csproj": {}
+    "D:\\комп.графика2\\Raster-algorithms\\RasterAlgorithms.csproj": {}
   },
   "projects": {
-    "D:\\mechmat\\computer graphics\\lab3\\Raster-algorithms\\RasterAlgorithms.csproj": {
+    "D:\\комп.графика2\\Raster-algorithms\\RasterAlgorithms.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\mechmat\\computer graphics\\lab3\\Raster-algorithms\\RasterAlgorithms.csproj",
+        "projectUniqueName": "D:\\комп.графика2\\Raster-algorithms\\RasterAlgorithms.csproj",
         "projectName": "RasterAlgorithms",
-        "projectPath": "D:\\mechmat\\computer graphics\\lab3\\Raster-algorithms\\RasterAlgorithms.csproj",
-        "packagesPath": "C:\\Users\\alexa\\.nuget\\packages\\",
-        "outputPath": "D:\\mechmat\\computer graphics\\lab3\\Raster-algorithms\\obj\\",
+        "projectPath": "D:\\комп.графика2\\Raster-algorithms\\RasterAlgorithms.csproj",
+        "packagesPath": "C:\\Users\\alisa\\.nuget\\packages\\",
+        "outputPath": "D:\\комп.графика2\\Raster-algorithms\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
         ],
         "configFilePaths": [
-          "C:\\Users\\alexa\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\alisa\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
@@ -68,7 +68,7 @@
               "privateAssets": "none"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.200/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.201/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

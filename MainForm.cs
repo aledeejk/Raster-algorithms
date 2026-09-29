@@ -35,9 +35,13 @@ namespace RasterAlgorithms
         private Point? lineStartPoint;         // начало текущего отрезка
         private Color lineColor = Color.Black; // цвет линии
         private int lineThickness = 1;         // толщина
-        private Bitmap? lineCanvasBitmap;      // холст
-        // ================================================================
+        private Bitmap? lineCanvasBitmap;      // холст                                  
 
+        // Задание 3: градиентный треугольник
+        private readonly List<Point> gradientPoints = new List<Point>();
+        private readonly List<Color> gradientColors = new List<Color>();
+        private Bitmap? gradientCanvasBitmap;
+        private readonly Random gradientRand = new Random();
         public MainForm()
         {
             InitializeComponent();
@@ -1142,6 +1146,61 @@ namespace RasterAlgorithms
             int bl = (int)(color.B * intensity + old.B * (1.0 - intensity));
 
             lineCanvasBitmap.SetPixel(px, py, Color.FromArgb(r, g, bl));
+        }
+
+        // Задание 3: обработчики для градиентного треугольника
+        private void pictureBoxTask3_Click(object? sender, EventArgs e)
+        {
+            var me = (MouseEventArgs)e;
+            if (me.Button != MouseButtons.Left) return;
+
+            if (gradientCanvasBitmap == null
+                || gradientCanvasBitmap.Width != pictureBoxTask3.Width
+                || gradientCanvasBitmap.Height != pictureBoxTask3.Height)
+            {
+                gradientCanvasBitmap?.Dispose();
+                gradientCanvasBitmap = new Bitmap(pictureBoxTask3.Width, pictureBoxTask3.Height);
+                using (Graphics g = Graphics.FromImage(gradientCanvasBitmap))
+                {
+                    g.Clear(Color.White);
+                }
+                pictureBoxTask3.Image = gradientCanvasBitmap;
+            }
+
+            gradientPoints.Add(me.Location);
+            gradientColors.Add(Color.FromArgb(
+                gradientRand.Next(256),
+                gradientRand.Next(256),
+                gradientRand.Next(256)));
+
+            if (gradientPoints.Count == 3)
+            {
+                using (Graphics g = Graphics.FromImage(gradientCanvasBitmap))
+                {
+                    GradientTriangle.Draw(g,
+                        gradientPoints[0], gradientColors[0],
+                        gradientPoints[1], gradientColors[1],
+                        gradientPoints[2], gradientColors[2]);
+                }
+                pictureBoxTask3.Invalidate();
+                gradientPoints.Clear();
+                gradientColors.Clear();
+            }
+        }
+
+        private void btnClearTask3_Click(object? sender, EventArgs e)
+        {
+            gradientPoints.Clear();
+            gradientColors.Clear();
+
+            if (gradientCanvasBitmap != null)
+            {
+                using (Graphics g = Graphics.FromImage(gradientCanvasBitmap))
+                {
+                    g.Clear(Color.White);
+                }
+                pictureBoxTask3.Invalidate();
+            }
         }
     }
 }

@@ -10,3 +10,18 @@ D:\mechmat\computer graphics\lab3\Raster-algorithms\obj\Debug\net9.0-windows\ref
 D:\mechmat\computer graphics\lab3\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.pdb
 D:\mechmat\computer graphics\lab3\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.genruntimeconfig.cache
 D:\mechmat\computer graphics\lab3\Raster-algorithms\obj\Debug\net9.0-windows\ref\RasterAlgorithms.dll
+D:\комп.графика2\Raster-algorithms\bin\Debug\net9.0-windows\RasterAlgorithms.exe
+D:\комп.графика2\Raster-algorithms\bin\Debug\net9.0-windows\RasterAlgorithms.deps.json
+D:\комп.графика2\Raster-algorithms\bin\Debug\net9.0-windows\RasterAlgorithms.runtimeconfig.json
+D:\комп.графика2\Raster-algorithms\bin\Debug\net9.0-windows\RasterAlgorithms.dll
+D:\комп.графика2\Raster-algorithms\bin\Debug\net9.0-windows\RasterAlgorithms.pdb
+D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.MainForm.resources
+D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.csproj.GenerateResource.cache
+D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.GeneratedMSBuildEditorConfig.editorconfig
+D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.csproj.CoreCompileInputs.cache
+D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.sourcelink.json
+D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.dll
+D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\refint\RasterAlgorithms.dll
+D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.pdb
+D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.genruntimeconfig.cache
+D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\ref\RasterAlgorithms.dll
