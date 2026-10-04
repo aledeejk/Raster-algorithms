@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace RasterAlgorithms
@@ -29,6 +30,12 @@ namespace RasterAlgorithms
         private const int MaxUndoSteps = 20;
         private readonly Stack<Bitmap> undoStack = new Stack<Bitmap>();
 
+        // ================================================================
+        // ==== Задание 1в: список упорядоченных граничных точек
+        private List<Point> boundaryList = new List<Point>();
+        // Классификация: true — левая граница, false — правая
+        private Dictionary<Point, bool> boundaryIsLeft = new Dictionary<Point, bool>();
+        // ================================================================
 
         // ================================================================
         // ==== Задание 2: состояние
@@ -42,6 +49,7 @@ namespace RasterAlgorithms
         private readonly List<Color> gradientColors = new List<Color>();
         private Bitmap? gradientCanvasBitmap;
         private readonly Random gradientRand = new Random();
+
         public MainForm()
         {
             InitializeComponent();
@@ -169,7 +177,7 @@ namespace RasterAlgorithms
                 "Лабораторная работа №3\n" +
                 "Растровые алгоритмы\n\n" +
                 "Задание 1: Заливка и выделение границы\n" +
-                "  1а) Рекурсивная заливка цветом\n" +
+                "  1а) Рекурсивная заливка сериями цветом\n" +
                 "  1б) Заливка рисунком из файла\n" +
                 "  1в) Выделение границы связной области\n\n" +
                 "Задание 2: Рисование отрезков\n" +
@@ -278,6 +286,8 @@ namespace RasterAlgorithms
                 graphics.Clear(Color.White);
 
             lassoPixels.Clear();
+            boundaryList.Clear();
+            boundaryIsLeft.Clear();
             canvas.Invalidate();
             statusLabel.Text = "Координаты: (0, 0)";
         }
@@ -307,7 +317,7 @@ namespace RasterAlgorithms
         }
         // ============================================================
 
-
+        // ============================================================
         //  ИСТОРИЯ
         // ============================================================
         private void PushUndo()
@@ -433,7 +443,7 @@ namespace RasterAlgorithms
         }
 
         // ============================================================
-        //  Брезенхем (для линии)
+        //  Брезенхем (для линии лассо)
         // ============================================================
         private static IEnumerable<Point> RasterizeLine(Point a, Point b)
         {
@@ -455,7 +465,7 @@ namespace RasterAlgorithms
         }
 
         // ============================================================
-        //  ЗАЛИВКА
+        //  ЗАЛИВКА (1а, 1б) — рекурсивная заливка сериями по лекции
         // ============================================================
         private void Fill(Point start, bool useTexture)
         {
@@ -469,54 +479,38 @@ namespace RasterAlgorithms
             }
 
             bool[,] filled = new bool[canvasBitmap.Width, canvasBitmap.Height];
-            FillLine(start.X, start.Y, target, useTexture, filled);
+            FillSeries(start.X, start.Y, target, useTexture, filled);
             canvas.Invalidate();
         }
 
-        private void FillLine(int x, int y, Color target, bool useTexture, bool[,] filled)
+        // Рекурсивная заливка серией:
+        //  1) находим [left..right] в строке y,
+        //  2) закрашиваем серию,
+        //  3) рекурсивно вызываем для КАЖДОЙ точки выше и ниже (буквально по лекции).
+        private void FillSeries(int x, int y, Color target, bool useTexture, bool[,] filled)
         {
             if (!CanFill(x, y, target, filled)) return;
 
+            // 1) границы серии
             int left = x;
             while (CanFill(left - 1, y, target, filled)) left--;
-
             int right = x;
             while (CanFill(right + 1, y, target, filled)) right++;
 
-            if (useTexture && backgroundTexture != null)
+            // 2) закрашиваем серию [left..right]
+            for (int i = left; i <= right; i++)
             {
-                for (int currentX = left; currentX <= right; currentX++)
-                {
-                    filled[currentX, y] = true;
-                    canvasBitmap!.SetPixel(currentX, y, GetFillColor(currentX, y, useTexture));
-                }
-            }
-            else
-            {
-                for (int currentX = left; currentX <= right; currentX++)
-                    filled[currentX, y] = true;
-
-                using Graphics g = Graphics.FromImage(canvasBitmap!);
-                using SolidBrush brush = new SolidBrush(fillColor);
-                g.FillRectangle(brush, left, y, right - left + 1, 1);
+                filled[i, y] = true;
+                canvasBitmap!.SetPixel(i, y, GetFillColor(i, y, useTexture));
             }
 
-            ScanLine(left, right, y - 1, target, useTexture, filled);
-            ScanLine(left, right, y + 1, target, useTexture, filled);
-        }
-
-        private void ScanLine(int left, int right, int y, Color target, bool useTexture, bool[,] filled)
-        {
-            int x = left;
-            while (x <= right)
+            // 3) рекурсия для каждой точки выше и ниже
+            for (int i = left; i <= right; i++)
             {
-                while (x <= right && !CanFill(x, y, target, filled)) x++;
-                if (x > right) return;
-
-                int runStart = x;
-                while (x <= right && CanFill(x, y, target, filled)) x++;
-
-                FillLine((runStart + x - 1) / 2, y, target, useTexture, filled);
+                if (y > 0 && CanFill(i, y - 1, target, filled))
+                    FillSeries(i, y - 1, target, useTexture, filled);
+                if (y < canvasBitmap!.Height - 1 && CanFill(i, y + 1, target, filled))
+                    FillSeries(i, y + 1, target, useTexture, filled);
             }
         }
 
@@ -531,6 +525,9 @@ namespace RasterAlgorithms
             return pixel.ToArgb() == target.ToArgb();
         }
 
+        // 1б) Заливка рисунком:
+        //   если текстура МЕНЬШЕ холста — циклически (tile);
+        //   если БОЛЬШЕ или равна — берём пиксель по координатам без масштабирования.
         private Color GetFillColor(int x, int y, bool useTexture)
         {
             if (!useTexture || backgroundTexture == null)
@@ -539,129 +536,150 @@ namespace RasterAlgorithms
             int tw = backgroundTexture.Width;
             int th = backgroundTexture.Height;
 
-            int sx = ((x % tw) + tw) % tw;
-            int sy = ((y % th) + th) % th;
-
+            int sx, sy;
+            if (tw <= canvasBitmap!.Width && th <= canvasBitmap.Height)
+            {
+                // Маленький файл — циклически
+                sx = ((x % tw) + tw) % tw;
+                sy = ((y % th) + th) % th;
+            }
+            else
+            {
+                // Большой файл — без масштаба, по координатам (с обрезкой)
+                sx = Math.Min(x, tw - 1);
+                sy = Math.Min(y, th - 1);
+            }
             return backgroundTexture.GetPixel(sx, sy);
         }
 
         // ============================================================
-        //  ОБХОД ГРАНИЦЫ
+        //  ОБХОД ГРАНИЦЫ (1в) — по спецификации лекции
         // ============================================================
         private void TraceBoundary(Point clickedPoint)
         {
             if (canvasBitmap == null) return;
 
-            // 1) Находим стартовый пиксель: ближайший не-белый пиксель в радиусе 8 от точки клика
+            // 1) стартовый пиксель рядом с кликом
             Point? startOpt = FindNonWhiteNear(clickedPoint, 8);
             if (!startOpt.HasValue)
             {
-                MessageBox.Show(
-                    "Не нашёл не-белый пиксель рядом с кликом.\n" +
-                    "Кликните ближе к контуру.",
-                    "Обход границы");
+                MessageBox.Show("Кликните ближе к контуру.", "Обход границы");
                 return;
             }
             Point start = startOpt.Value;
 
-            // 2) Строим МАСКУ границы: берем все не-белые пиксели,
-            //    чтобы учесть "сглаженные" пиксели
             int W = canvasBitmap.Width;
             int H = canvasBitmap.Height;
-            bool[,] isBorder = new bool[W, H];
 
+            // 2) маска «не-белое» = потенциальная граница
+            bool[,] isBorder = new bool[W, H];
             for (int y = 0; y < H; y++)
-            {
                 for (int x = 0; x < W; x++)
                 {
                     Color c = canvasBitmap.GetPixel(x, y);
-                    // "Не белый" пиксель = пиксель-граница
                     if (!(c.R > 230 && c.G > 230 && c.B > 230))
                         isBorder[x, y] = true;
                 }
-            }
 
-            // 3) Собираем 8-связную компоненту из маски
-            HashSet<Point> component = CollectComponent(start, isBorder); // BFS по 8-связности
+            // 3) 8-связная компонента
+            HashSet<Point> component = CollectComponent(start, isBorder);
             if (component.Count < 3)
             {
-                MessageBox.Show(
-                    $"Компонента слишком маленькая: {component.Count}.\n" +
-                    "Проверьте, что кликаете по контуру.",
-                    "Обход границы");
+                MessageBox.Show("Слишком маленькая компонента.", "Обход границы");
                 return;
             }
 
-            // 4) Определяем толщину: если >40% пикселей имеют всех 8 соседей
-            //    внутри компоненты — граница "толстая", обходим только край
-            double interiorRatio = ComputeInteriorRatio(component);
-            bool thick = interiorRatio > 0.4;
-
-            HashSet<Point> target = component;
-            if (thick)
+            // 4) «Внутренность справа»: оставляем только пиксели,
+            //    у которых есть сосед-не-граница (внутренняя часть).
+            //    Лекция: «Если пиксел не соседствует с внутренней частью — не считается граничным».
+            HashSet<Point> boundary = ExtractTrueBoundary(component, isBorder);
+            if (boundary.Count < 3)
             {
-                target = ExtractEdgePixels(component);
-                if (target.Count < 3)
-                {
-                    MessageBox.Show("Не удалось выделить край границы.", "Обход границы");
-                    return;
-                }
+                MessageBox.Show("Не удалось выделить границу.", "Обход границы");
+                return;
             }
 
-            // 5) Стартовая точка: самая верхняя-левая из target.
-            //    Гарантирует старт на внешнем крае, независимо от выбранной мышкой точки
+            // 5) старт — верхний-левый из boundary
             Point traceStart = default;
-            bool foundStart = false;
-            foreach (Point p in target)
-            {
-                if (!foundStart
-                    || p.Y < traceStart.Y
-                    || (p.Y == traceStart.Y && p.X < traceStart.X))
-                {
-                    traceStart = p;
-                    foundStart = true;
-                }
-            }
-            if (!foundStart)
-            {
-                MessageBox.Show("Не удалось выбрать стартовую точку.", "Обход границы");
-                return;
-            }
+            bool found = false;
+            foreach (Point p in boundary)
+                if (!found || p.Y < traceStart.Y || (p.Y == traceStart.Y && p.X < traceStart.X))
+                { traceStart = p; found = true; }
+            if (!found) { MessageBox.Show("Нет граничных точек.", "Обход границы"); return; }
 
-            // 6) Обход по спецификации
-            // Индексы: 0=E, 1=SE, 2=S, 3=SW, 4=W, 5=NW, 6=N, 7=NE (по часовой стрелке, начиная с востока)
-            List<Point> ordered = TraceBoundaryOrdered(traceStart, target);
+            // 6) обход по часовой стрелке
+            List<Point> ordered = TraceBoundaryOrdered(traceStart, boundary);
             if (ordered.Count < 2)
             {
-                MessageBox.Show(
-                    $"Обход вернул {ordered.Count} точек. Что-то не так с контуром.",
-                    "Обход границы");
+                MessageBox.Show("Обход не удался.", "Обход границы");
                 return;
             }
 
-            // 7) Рисуем каждое ребро линией, а не точками
+            // 7) сохраняем список, упорядоченный по y, потом по x (как требует лекция)
+            boundaryList = new List<Point>(ordered);
+            boundaryList.Sort((a, b) => a.Y != b.Y ? a.Y.CompareTo(b.Y) : a.X.CompareTo(b.X));
+
+            // 8) классификация левая/правая:
+            //    внутренность справа => левая граница; внутренность слева => правая.
+            boundaryIsLeft.Clear();
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                Point cur = ordered[i];
+                Point next = ordered[(i + 1) % ordered.Count];
+
+                int dx = Math.Sign(next.X - cur.X);
+                int dy = Math.Sign(next.Y - cur.Y);
+
+                // «справа» от направления (dx, dy) в экранных координатах — (dy, -dx)
+                int rx = cur.X + dy;
+                int ry = cur.Y - dx;
+
+                bool insideRight = rx >= 0 && rx < W && ry >= 0 && ry < H
+                                   && !isBorder[rx, ry];
+                boundaryIsLeft[cur] = insideRight;
+            }
+
+            // 9) рисуем обход красным
             using (Graphics g = Graphics.FromImage(canvasBitmap))
-            using (Pen pen = new Pen(Color.Red, 2))
+            using (Pen pen = new Pen(boundaryHighlightColor, 2))
             {
                 for (int i = 0; i < ordered.Count - 1; i++)
-                {
                     if (ordered[i] != ordered[i + 1])
                         g.DrawLine(pen, ordered[i], ordered[i + 1]);
-                }
-                if (ordered.Count > 1 && ordered[ordered.Count - 1] != ordered[0])
-                    g.DrawLine(pen, ordered[ordered.Count - 1], ordered[0]);
+                if (ordered.Count > 1 && ordered[^1] != ordered[0])
+                    g.DrawLine(pen, ordered[^1], ordered[0]);
             }
 
             canvas.Invalidate();
+            int leftCount = boundaryIsLeft.Count(kv => kv.Value);
             statusLabel.Text =
-                $"Готово. Компонента: {component.Count}, " +
-                $"край: {target.Count}, в контуре: {ordered.Count}, " +
-                $"толщина: {(thick ? "толстая" : "тонкая")}";
+                $"Готово. Компонента: {component.Count}, граница: {boundary.Count}, " +
+                $"в контуре: {ordered.Count}, левых: {leftCount}, правых: {boundaryIsLeft.Count - leftCount}";
         }
 
-        /// <summary>
-        /// Ближайший не-белый пиксель к точке (в радиусе radius).
-        /// </summary>
+        // Оставляем только пиксели, у которых есть сосед-не-граница (внутренность).
+        // Соответствует лекции: «Если пиксел не соседствует с внутренней частью — не считается граничным».
+        private HashSet<Point> ExtractTrueBoundary(HashSet<Point> component, bool[,] isBorder)
+        {
+            var result = new HashSet<Point>();
+            int W = canvasBitmap!.Width, H = canvasBitmap.Height;
+            foreach (Point p in component)
+            {
+                bool hasInside = false;
+                for (int dx = -1; dx <= 1 && !hasInside; dx++)
+                    for (int dy = -1; dy <= 1 && !hasInside; dy++)
+                    {
+                        if (dx == 0 && dy == 0) continue;
+                        int nx = p.X + dx, ny = p.Y + dy;
+                        if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+                        if (!isBorder[nx, ny]) hasInside = true;
+                    }
+                if (hasInside) result.Add(p);
+            }
+            return result;
+        }
+
+        // Ближайший не-белый пиксель к точке (в радиусе radius).
         private Point? FindNonWhiteNear(Point click, int radius)
         {
             if (canvasBitmap == null) return null;
@@ -684,9 +702,7 @@ namespace RasterAlgorithms
             return null;
         }
 
-        /// <summary>
-        /// BFS по маске: собирает 8-связную компоненту isBorder, содержащую start
-        /// </summary>
+        // BFS по маске: собирает 8-связную компоненту isBorder, содержащую start.
         private HashSet<Point> CollectComponent(Point start, bool[,] isBorder)
         {
             var visited = new HashSet<Point>();
@@ -724,15 +740,12 @@ namespace RasterAlgorithms
             return visited;
         }
 
-        /// <summary>
-        /// Обход границы компоненты по спецификации:
-        ///  - старт — заданная точка;
-        ///  - первое направление — вниз;
-        ///  - далее — 90° по часовой стрелке от направления входа;
-        ///  - поиск следующей — против часовой стрелки.
-        ///  - остановка — по возврату в старт после того как прошли
-        ///    хотя бы половину компоненты (защита от ложного замыкания).
-        /// </summary>
+        // Обход границы по часовой стрелке:
+        //  - старт — заданная точка;
+        //  - первое направление — вниз (S);
+        //  - далее — 90° по часовой стрелке от направления входа;
+        //  - поиск следующей — против часовой стрелки;
+        //  - остановка — по возврату в старт.
         private List<Point> TraceBoundaryOrdered(Point start, HashSet<Point> component)
         {
             var result = new List<Point>();
@@ -746,7 +759,7 @@ namespace RasterAlgorithms
 
             Point startPoint = start;
 
-            // Первое направление — вниз, поиск против часовой стрелки: 2,1,0,7,6,5,4,3
+            // Первое направление — вниз (индекс 2), поиск против часовой: 2,1,0,7,6,5,4,3
             int firstDir = -1;
             for (int i = 0; i < 8; i++)
             {
@@ -760,31 +773,26 @@ namespace RasterAlgorithms
 
             if (firstDir < 0) { result.Add(startPoint); return result; }
 
-            Point prev = startPoint;
             Point curr = new Point(startPoint.X + dx[firstDir], startPoint.Y + dy[firstDir]);
             int arrivedDir = firstDir;
 
             result.Add(startPoint);
-
-            // Порог "минимальной длины обхода" — не даём остановиться раньше,
-            // чем пройдём хотя бы половину компоненты
-            int minStepsBeforeStop = Math.Max(4, component.Count / 2);
 
             int maxSteps = component.Count * 8 + 64;
             int steps = 0;
 
             while (steps++ < maxSteps)
             {
-                // Проверка замыкания — только после того, как прошли минимум
-                if (curr == startPoint && result.Count >= minStepsBeforeStop)
-                {
+                // Замыкание — после того, как прошли хотя бы 3 точки
+                if (curr == startPoint && result.Count > 2)
                     break;
-                }
 
                 result.Add(curr);
 
+                // Следующая — на 90° по часовой от направления входа
                 int searchStart = (arrivedDir + 2) % 8;
                 int foundDir = -1;
+                // Поиск против часовой стрелки
                 for (int i = 0; i < 8; i++)
                 {
                     int d = ((searchStart - i) % 8 + 8) % 8;
@@ -797,81 +805,14 @@ namespace RasterAlgorithms
 
                 if (foundDir < 0) break;
 
-                prev = curr;
                 curr = new Point(curr.X + dx[foundDir], curr.Y + dy[foundDir]);
                 arrivedDir = foundDir;
             }
 
-            if (result.Count > 1 && result[result.Count - 1] != result[0])
+            if (result.Count > 1 && result[^1] != result[0])
                 result.Add(result[0]);
 
             return result;
-        }
-
-        /// <summary>
-        /// Доля пикселей компоненты, у которых все 8 соседей тоже в компоненте.
-        /// Для тонкой линии ~ 0; для толстой полосы > 0.5.
-        /// </summary>
-        private double ComputeInteriorRatio(HashSet<Point> component)
-        {
-            if (component.Count == 0) return 0;
-
-            int interior = 0;
-            foreach (Point p in component)
-            {
-                int cnt = 0;
-                for (int dx = -1; dx <= 1; dx++)
-                    for (int dy = -1; dy <= 1; dy++)
-                    {
-                        if (dx == 0 && dy == 0) continue;
-                        if (component.Contains(new Point(p.X + dx, p.Y + dy))) cnt++;
-                    }
-                if (cnt == 8) interior++;
-            }
-            return (double)interior / component.Count;
-        }
-
-        /// <summary>
-        /// Возвращает пиксели компоненты, у которых есть хотя бы один 8-сосед
-        /// вне компоненты (т.е. "краевые" пиксели толстой полосы).
-        /// </summary>
-        private HashSet<Point> ExtractEdgePixels(HashSet<Point> component)
-        {
-            var edge = new HashSet<Point>();
-            foreach (Point p in component)
-            {
-                bool isEdge = false;
-                for (int dx = -1; dx <= 1 && !isEdge; dx++)
-                    for (int dy = -1; dy <= 1 && !isEdge; dy++)
-                    {
-                        if (dx == 0 && dy == 0) continue;
-                        if (!component.Contains(new Point(p.X + dx, p.Y + dy)))
-                            isEdge = true;
-                    }
-                if (isEdge) edge.Add(p);
-            }
-            return edge;
-        }
-
-        /// <summary>
-        /// Ближайший к точке пиксель из множества (по евклидову расстоянию).
-        /// </summary>
-        private Point FindNearestInSet(Point target, HashSet<Point> set)
-        {
-            Point best = default;
-            long bestDist = long.MaxValue;
-            foreach (Point p in set)
-            {
-                long dx = p.X - target.X;
-                long dy = p.Y - target.Y;
-                long d = dx * dx + dy * dy;
-                if (d < bestDist)
-                {
-                    bestDist = d;
-                    best = p;
-                }
-            }
-            return best;
         }
 
         private bool IsBoundary(Point point)
@@ -947,10 +888,8 @@ namespace RasterAlgorithms
         // ================================================================
         // ==== Задание 2: методы
 
-        /// <summary>
-        /// Инициализация холста.
-        /// Вызывается при первом рисовании и при изменении размера.
-        /// </summary>
+        // Инициализация холста.
+        // Вызывается при первом рисовании и при изменении размера.
         private void EnsureLineCanvasBitmap()
         {
             if (lineCanvas.ClientSize.Width <= 0 || lineCanvas.ClientSize.Height <= 0)
@@ -980,11 +919,9 @@ namespace RasterAlgorithms
             lineCanvas.Image = lineCanvasBitmap;
         }
 
-        /// <summary>
-        /// Обработка клика мышкой по холсту. 
-        /// Первый клик задаёт начало отрезка.Второй клик — конец, отрезок рисуется.
-        /// Cостояние lineStartPoint сбрасывается
-        /// </summary>
+        // Обработка клика мышкой по холсту.
+        // Первый клик задаёт начало отрезка. Второй клик — конец, отрезок рисуется.
+        // Состояние lineStartPoint сбрасывается.
         private void lineCanvas_MouseDown(object? sender, MouseEventArgs e)
         {
             if (e.Button != MouseButtons.Left) return;
@@ -1037,10 +974,8 @@ namespace RasterAlgorithms
             EnsureLineCanvasBitmap();
         }
 
-        /// <summary>
-        /// Целочисленный алгоритм Брезенхема.
-        /// Толщина реализуется как квадрат thickness × thickness вокруг каждого пикселя.
-        /// </summary>
+        // Целочисленный алгоритм Брезенхема.
+        // Толщина реализуется как квадрат thickness × thickness вокруг каждого пикселя.
         private void DrawLineBresenham(Point a, Point b, Color color, int thickness)
         {
             if (lineCanvasBitmap == null) return;
@@ -1079,18 +1014,16 @@ namespace RasterAlgorithms
             }
         }
 
-        /// <summary>
-        /// Алгоритм Ву (У Сяолиня) — сглаженная линия.
-        /// Соседние пиксели рисуются с разной яркостью
-        /// пропорционально расстоянию до идеальной прямой.
-        /// </summary>
+        // Алгоритм Ву (У Сяолиня) — сглаженная линия.
+        // Соседние пиксели рисуются с разной яркостью
+        // пропорционально расстоянию до идеальной прямой.
         private void DrawLineWu(Point a, Point b, Color color)
         {
             if (lineCanvasBitmap == null) return;
 
             int x0 = a.X, y0 = a.Y, x1 = b.X, y1 = b.Y;
 
-            // Если линия более вертикальная, чем горизонтальная — 
+            // Если линия более вертикальная, чем горизонтальная —
             // меняем оси, чтобы основная ось была X (иначе сглаживание будет по Y).
             bool steep = Math.Abs(y1 - y0) > Math.Abs(x1 - x0);
             if (steep)
@@ -1122,9 +1055,7 @@ namespace RasterAlgorithms
             }
         }
 
-        /// <summary>
-        /// Рисует один "размазанный" пиксель с заданной интенсивностью.
-        /// </summary>
+        // Рисует один "размазанный" пиксель с заданной интенсивностью.
         private void PlotWu(int x, int y, double intensity, Color color, bool steep)
         {
             if (lineCanvasBitmap == null) return;

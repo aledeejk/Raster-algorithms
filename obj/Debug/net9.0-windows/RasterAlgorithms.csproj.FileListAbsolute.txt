@@ -25,3 +25,6 @@ D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\refint\Ra
 D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.pdb
 D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.genruntimeconfig.cache
 D:\комп.графика2\Raster-algorithms\obj\Debug\net9.0-windows\ref\RasterAlgorithms.dll
+D:\mechmat\computer graphics\lab3\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.MainForm.resources
+D:\mechmat\computer graphics\lab3\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.csproj.GenerateResource.cache
+D:\mechmat\computer graphics\lab3\Raster-algorithms\obj\Debug\net9.0-windows\RasterAlgorithms.sourcelink.json
