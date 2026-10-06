@@ -615,12 +615,12 @@ namespace RasterAlgorithms
                 return;
             }
 
-            // 7) сохраняем список, упорядоченный по y, потом по x (как требует лекция)
+            // 7) сохраняем список, упорядоченный по y, потом по x
             boundaryList = new List<Point>(ordered);
             boundaryList.Sort((a, b) => a.Y != b.Y ? a.Y.CompareTo(b.Y) : a.X.CompareTo(b.X));
 
             // 8) классификация левая/правая:
-            //    внутренность справа => левая граница; внутренность слева => правая.
+            //    внутренность справа => левая граница; внутренность слева => правая
             boundaryIsLeft.Clear();
             for (int i = 0; i < ordered.Count; i++)
             {
@@ -657,8 +657,8 @@ namespace RasterAlgorithms
                 $"в контуре: {ordered.Count}, левых: {leftCount}, правых: {boundaryIsLeft.Count - leftCount}";
         }
 
-        // Оставляем только пиксели, у которых есть сосед-не-граница (внутренность).
-        // Соответствует лекции: «Если пиксел не соседствует с внутренней частью — не считается граничным».
+        // Оставляем только пиксели, у которых есть сосед-не-граница (внутренность)
+        // «Если пиксел не соседствует с внутренней частью — не считается граничным»
         private HashSet<Point> ExtractTrueBoundary(HashSet<Point> component, bool[,] isBorder)
         {
             var result = new HashSet<Point>();
@@ -679,7 +679,7 @@ namespace RasterAlgorithms
             return result;
         }
 
-        // Ближайший не-белый пиксель к точке (в радиусе radius).
+        // Ближайший не-белый пиксель к точке (в радиусе)
         private Point? FindNonWhiteNear(Point click, int radius)
         {
             if (canvasBitmap == null) return null;
@@ -702,7 +702,7 @@ namespace RasterAlgorithms
             return null;
         }
 
-        // BFS по маске: собирает 8-связную компоненту isBorder, содержащую start.
+        // BFS по маске: собирает 8-связную компоненту isBorder, содержащую start
         private HashSet<Point> CollectComponent(Point start, bool[,] isBorder)
         {
             var visited = new HashSet<Point>();
@@ -974,8 +974,7 @@ namespace RasterAlgorithms
             EnsureLineCanvasBitmap();
         }
 
-        // Целочисленный алгоритм Брезенхема.
-        // Толщина реализуется как квадрат thickness × thickness вокруг каждого пикселя.
+        // Целочисленный алгоритм Брезенхема
         private void DrawLineBresenham(Point a, Point b, Color color, int thickness)
         {
             if (lineCanvasBitmap == null) return;
@@ -983,34 +982,72 @@ namespace RasterAlgorithms
             int x0 = a.X, y0 = a.Y, x1 = b.X, y1 = b.Y;
 
             int dx = Math.Abs(x1 - x0);
-            int dy = -Math.Abs(y1 - y0);
-            int sx = x0 < x1 ? 1 : -1;
-            int sy = y0 < y1 ? 1 : -1;
-            int err = dx + dy;
+            int dy = Math.Abs(y1 - y0);
+
+            // Приращения для d (вычисляются 1 раз)
+            int incr1 = 2 * dy;           // если d < 0
+            int incr2 = 2 * (dy - dx);    // если d >= 0
+
+            int d = 2 * dy - dx;          // начальное значение d
+
+            int x, y, xend;
+            int sx, sy;
+
+            // Определяем направление и начальную точку
+            if (x0 > x1)
+            {
+                x = x1; y = y1; xend = x0;
+                sx = -1; sy = -1;  // идём справа налево
+            }
+            else
+            {
+                x = x0; y = y0; xend = x1;
+                sx = 1; sy = 1;    // идём слева направо
+            }
+
+            // Нужно учесть направление по Y
+            sy = (y0 < y1) ? 1 : -1;
+
+            // Рисуем первый пиксель
+            PlotThickPixel(x, y, color, thickness);
+
+            while (x != xend)
+            {
+                x += sx;
+
+                if (d < 0)
+                {
+                    d += incr1;
+                }
+                else
+                {
+                    y += sy;
+                    d += incr2;
+                }
+
+                PlotThickPixel(x, y, color, thickness);
+            }
+        }
+
+
+        // Толщина реализуется как квадрат thickness × thickness вокруг каждого пикселя
+        private void PlotThickPixel(int x, int y, Color color, int thickness)
+        {
+            if (lineCanvasBitmap == null) return;
 
             int half = (thickness - 1) / 2;
             int extra = (thickness - 1) - half;
 
-            while (true)
+            for (int ox = -half; ox <= extra; ox++)
             {
-                // Рисуем "жирный" пиксель
-                for (int ox = -half; ox <= extra; ox++)
+                for (int oy = -half; oy <= extra; oy++)
                 {
-                    for (int oy = -half; oy <= extra; oy++)
-                    {
-                        int px = x0 + ox;
-                        int py = y0 + oy;
-                        if (px < 0 || px >= lineCanvasBitmap.Width) continue;
-                        if (py < 0 || py >= lineCanvasBitmap.Height) continue;
-                        lineCanvasBitmap.SetPixel(px, py, color);
-                    }
+                    int px = x + ox;
+                    int py = y + oy;
+                    if (px < 0 || px >= lineCanvasBitmap.Width) continue;
+                    if (py < 0 || py >= lineCanvasBitmap.Height) continue;
+                    lineCanvasBitmap.SetPixel(px, py, color);
                 }
-
-                if (x0 == x1 && y0 == y1) break;
-
-                int e2 = 2 * err;
-                if (e2 >= dy) { err += dy; x0 += sx; }
-                if (e2 <= dx) { err += dx; y0 += sy; }
             }
         }
 
